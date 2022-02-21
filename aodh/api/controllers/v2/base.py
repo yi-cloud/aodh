@@ -21,16 +21,15 @@
 import ast
 import datetime
 import functools
-import inspect
 
 from oslo_utils import strutils
 from oslo_utils import timeutils
 import pecan
-import six
 import wsme
 from wsme import types as wtypes
 
 from aodh.i18n import _
+from aodh.utils import get_func_valid_keys
 
 
 operation_kind = ('lt', 'le', 'eq', 'ne', 'ge', 'gt')
@@ -77,6 +76,7 @@ class AdvEnum(wtypes.wsproperty):
 
 
 class Base(wtypes.DynamicBase):
+    _wsme_attributes = []
 
     @classmethod
     def from_db_model(cls, m):
@@ -87,7 +87,7 @@ class Base(wtypes.DynamicBase):
         return cls(links=links, **(m.as_dict()))
 
     def as_dict(self, db_model):
-        valid_keys = inspect.getargspec(db_model.__init__)[0]
+        valid_keys = get_func_valid_keys(db_model.__init__)
         if 'self' in valid_keys:
             valid_keys.remove('self')
         return self.as_dict_from_keys(valid_keys)
@@ -97,6 +97,14 @@ class Base(wtypes.DynamicBase):
                     for k in keys
                     if hasattr(self, k) and
                     getattr(self, k) != wsme.Unset)
+
+    def to_dict(self):
+        d = {}
+        for attr in self._wsme_attributes:
+            attr_val = getattr(self, attr.name)
+            if not isinstance(attr_val, wtypes.UnsetType):
+                d[attr.name] = attr_val
+        return d
 
 
 class Query(Base):
@@ -110,7 +118,7 @@ class Query(Base):
                         'float': float,
                         'boolean': functools.partial(
                             strutils.bool_from_string, strict=True),
-                        'string': six.text_type,
+                        'string': str,
                         'datetime': timeutils.parse_isotime}
 
     _op = None  # provide a default
@@ -153,7 +161,7 @@ class Query(Base):
     def as_dict(self):
         return self.as_dict_from_keys(['field', 'op', 'type', 'value'])
 
-    def _get_value_as_type(self, forced_type=None):
+    def get_value(self, forced_type=None):
         """Convert metadata value to the specified data type.
 
         This method is called during metadata query to help convert the

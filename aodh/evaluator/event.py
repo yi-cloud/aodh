@@ -12,17 +12,15 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
+import fnmatch
 import json
 import operator
 
 from oslo_config import cfg
 from oslo_log import log
-from oslo_utils import fnmatch
 from oslo_utils import timeutils
-import six
 
 from aodh import evaluator
-from aodh.i18n import _
 
 LOG = log.getLogger(__name__)
 
@@ -51,7 +49,7 @@ def _sanitize_trait_value(value, trait_type):
     elif trait_type in (4, 'datetime'):
         return timeutils.normalize_time(timeutils.parse_isotime(value))
     else:
-        return six.text_type(value)
+        return str(value)
 
 
 class InvalidEvent(Exception):
@@ -171,8 +169,7 @@ class EventAlarmEvaluator(evaluator.Evaluator):
                             'for it.', e)
                 continue
 
-            for id, alarm in six.iteritems(
-                    self._get_project_alarms(event.project)):
+            for id, alarm in self._get_project_alarms(event.project).items():
                 try:
                     self._evaluate_alarm(alarm, event)
                 except Exception:
@@ -194,8 +191,8 @@ class EventAlarmEvaluator(evaluator.Evaluator):
         # this function update only alarms changed from the last access.
         alarms = {a.alarm_id: Alarm(a) for a in
                   self._storage_conn.get_alarms(enabled=True,
-                                                alarm_type='event',
-                                                project=project)}
+                                                type='event',
+                                                project_id=project)}
 
         if self.conf.event_alarm_cache_ttl:
             self.caches[project] = {
@@ -238,9 +235,13 @@ class EventAlarmEvaluator(evaluator.Evaluator):
 
         for condition in alarm.query:
             if not _compare(condition):
-                LOG.debug('Aborting evaluation of the alarm due to '
-                          'unmet condition=%s .', condition)
+                LOG.info('Aborting evaluation of the alarm %s due to '
+                         'unmet condition=%s .', alarm.id, condition)
                 return
+
+        LOG.info('Triggering the alarm %s by event for project %s, '
+                 'event_type: %s',
+                 alarm.id, event.project, event.obj.get('event_type'))
 
         self._fire_alarm(alarm, event)
 
@@ -248,8 +249,8 @@ class EventAlarmEvaluator(evaluator.Evaluator):
         """Update alarm state and fire alarm via alarm notifier."""
 
         state = evaluator.ALARM
-        reason = (_('Event <id=%(id)s,event_type=%(event_type)s> hits the '
-                    'query <query=%(alarm_query)s>.') %
+        reason = (('Event <id=%(id)s,event_type=%(event_type)s> hits the '
+                   'query <query=%(alarm_query)s>.') %
                   {'id': event.id,
                    'event_type': event.get_value('event_type'),
                    'alarm_query': json.dumps(alarm.obj.rule['query'],

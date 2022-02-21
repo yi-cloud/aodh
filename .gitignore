@@ -13,7 +13,6 @@ ChangeLog
 cover/*
 dist/*
 doc/build
-doc/source/_static/
 etc/aodh/aodh.conf
 subunit.log
 
@@ -21,3 +20,6 @@ subunit.log
 releasenotes/build
 /doc/source/contributor/api/
 doc/source/_static/aodh.policy.yaml.sample
+doc/source/_static/aodh.conf.sample
+
+.vscode/

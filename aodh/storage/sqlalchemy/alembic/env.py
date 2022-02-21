@@ -12,8 +12,6 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-
-from __future__ import with_statement
 from alembic import context
 from logging.config import fileConfig
 
@@ -81,6 +79,7 @@ def run_migrations_online():
         with context.begin_transaction():
             context.run_migrations()
     conn.disconnect()
+
 
 if not hasattr(config, "conf"):
     from aodh import service

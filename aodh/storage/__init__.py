@@ -19,9 +19,9 @@ import datetime
 from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import timeutils
-import six.moves.urllib.parse as urlparse
 from stevedore import driver
 import tenacity
+from urllib import parse as urlparse
 
 _NAMESPACE = 'aodh.storage'
 
@@ -34,6 +34,11 @@ OPTS = [
                default=-1,
                help=("Number of seconds that alarm histories are kept "
                      "in the database for (<= 0 means forever).")),
+    cfg.IntOpt('alarm_histories_delete_batch_size',
+               default=0,
+               min=0,
+               help=("Number of alarm histories to be deleted in one "
+                     "iteration from the database (0 means all).")),
 ]
 
 

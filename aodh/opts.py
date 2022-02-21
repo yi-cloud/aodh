@@ -22,6 +22,8 @@ import aodh.coordination
 import aodh.evaluator
 import aodh.evaluator.event
 import aodh.evaluator.gnocchi
+import aodh.evaluator.loadbalancer
+import aodh.evaluator.threshold
 import aodh.event
 import aodh.keystone_client
 import aodh.notifier.rest
@@ -37,6 +39,7 @@ def list_opts():
              aodh.evaluator.OPTS,
              aodh.evaluator.event.OPTS,
              aodh.evaluator.threshold.OPTS,
+             aodh.evaluator.loadbalancer.OPTS,
              aodh.notifier.rest.OPTS,
              aodh.queue.OPTS,
              aodh.service.OPTS)),
@@ -50,10 +53,10 @@ def list_opts():
         ('evaluator', aodh.service.EVALUATOR_OPTS),
         ('listener', itertools.chain(aodh.service.LISTENER_OPTS,
                                      aodh.event.OPTS)),
-        ('notifier', aodh.service.NOTIFIER_OPTS),
+        ('notifier', itertools.chain(aodh.notifier.OPTS,
+                                     aodh.service.NOTIFIER_OPTS)),
         ('service_credentials', aodh.keystone_client.OPTS),
         ('service_types', aodh.notifier.zaqar.SERVICE_OPTS),
-        ('notifier', aodh.notifier.OPTS),
     ]
 
 

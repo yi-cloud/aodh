@@ -13,12 +13,10 @@
 #
 
 from oslo_log import log
-import six
 import stevedore
 
 from aodh import evaluator
 from aodh.evaluator import threshold
-from aodh.i18n import _
 
 LOG = log.getLogger(__name__)
 
@@ -88,7 +86,7 @@ class AndOp(object):
         return all(self.rule_targets)
 
     def __str__(self):
-        return '(' + ' and '.join(six.moves.map(str, self.rule_targets)) + ')'
+        return '(' + ' and '.join(map(str, self.rule_targets)) + ')'
 
     __nonzero__ = __bool__
 
@@ -101,7 +99,7 @@ class OrOp(object):
         return any(self.rule_targets)
 
     def __str__(self):
-        return '(' + ' or '.join(six.moves.map(str, self.rule_targets)) + ')'
+        return '(' + ' or '.join(map(str, self.rule_targets)) + ')'
 
     __nonzero__ = __bool__
 
@@ -124,8 +122,6 @@ class CompositeEvaluator(evaluator.Evaluator):
             self._threshold_evaluators = stevedore.NamedExtensionManager(
                 'aodh.evaluator', threshold_types, invoke_on_load=True,
                 invoke_args=(self.conf,))
-            [LOG.debug('alarm.type === %s, _threshold_evaluator === %s', typ, value)
-             for typ, value in self._threshold_evaluators.items()]
         return self._threshold_evaluators
 
     def _parse_composite_rule(self, alarm_rule):
@@ -179,14 +175,14 @@ class CompositeEvaluator(evaluator.Evaluator):
                   'rules': ', '.join(sorted(root_cause_rules)),
                   'description': STATE_CHANGE[new_state]}
         if transition:
-            reason = (_('Composite rule alarm with composition form: '
-                        '%(expression)s transition to %(state)s, due to '
-                        'rules: %(rules)s %(description)s') % params)
+            reason = (('Composite rule alarm with composition form: '
+                       '%(expression)s transition to %(state)s, due to '
+                       'rules: %(rules)s %(description)s') % params)
 
         else:
-            reason = (_('Composite rule alarm with composition form: '
-                        '%(expression)s remaining as %(state)s, due to '
-                        'rules: %(rules)s %(description)s') % params)
+            reason = (('Composite rule alarm with composition form: '
+                       '%(expression)s remaining as %(state)s, due to '
+                       'rules: %(rules)s %(description)s') % params)
 
         return reason, reason_data
 

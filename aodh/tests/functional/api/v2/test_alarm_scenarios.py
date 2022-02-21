@@ -14,16 +14,15 @@
 # under the License.
 """Tests alarm operation."""
 
+import copy
 import datetime
 import json as jsonlib
 import operator
 import os
+from unittest import mock
 
 import fixtures
-import mock
 from oslo_utils import uuidutils
-import six
-from six import moves
 import webtest
 
 from aodh.api import app
@@ -126,8 +125,10 @@ class TestAlarmsBase(v2.FunctionalTest):
 
     def setUp(self):
         super(TestAlarmsBase, self).setUp()
-        self.auth_headers = {'X-User-Id': uuidutils.generate_uuid(),
-                             'X-Project-Id': uuidutils.generate_uuid()}
+        self.project_id = uuidutils.generate_uuid()
+        self.user_id = uuidutils.generate_uuid()
+        self.auth_headers = {'X-User-Id': self.user_id,
+                             'X-Project-Id': self.project_id}
 
         c = mock.Mock()
         c.capabilities.list.return_value = {'aggregation_methods': [
@@ -148,8 +149,13 @@ class TestAlarmsBase(v2.FunctionalTest):
             self.assertEqual(json[key], getattr(alarm, storage_key))
 
     def _get_alarm(self, id, auth_headers=None):
-        data = self.get_json('/alarms',
-                             headers=auth_headers or self.auth_headers)
+        headers = auth_headers or self.auth_headers
+        url_path = "/alarms"
+        if headers.get('X-Roles') == 'admin':
+            url_path = '/alarms?q.field=all_projects&q.op=eq&q.value=true'
+
+        data = self.get_json(url_path, headers=headers)
+
         match = [a for a in data if a['alarm_id'] == id]
         self.assertEqual(1, len(match), 'alarm %s not found' % id)
         return match[0]
@@ -206,9 +212,6 @@ class TestAlarms(TestAlarmsBase):
                                  'value': isotime}],
                              expect_errors=True)
         self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.json['error_message']['faultstring'],
-                         'Unknown argument: "timestamp": '
-                         'not valid for this resource')
 
     def test_alarms_query_with_state(self):
         alarm = models.Alarm(name='disabled',
@@ -260,14 +263,45 @@ class TestAlarms(TestAlarmsBase):
         self.assertEqual(set(['gnocchi_aggregation_by_metrics_threshold']),
                          set(alarm['type'] for alarm in alarms))
 
+    def test_list_alarms_all_projects_by_admin(self):
+        auth_headers = copy.copy(self.auth_headers)
+        auth_headers['X-Roles'] = 'admin'
+
+        alarms = self.get_json(
+            '/alarms',
+            headers=auth_headers,
+            q=[{'field': 'all_projects', 'op': 'eq', 'value': 'true'}]
+        )
+
+        self.assertEqual(3, len(alarms))
+
+    def test_list_alarms_all_projects_forbidden(self):
+        response = self.get_json(
+            '/alarms',
+            headers=self.auth_headers,
+            q=[{'field': 'all_projects', 'op': 'eq', 'value': 'true'}],
+            expect_errors=True,
+            status=401
+        )
+
+        faultstring = 'RBAC Authorization Failed'
+        self.assertIn(faultstring,
+                      response.json['error_message']['faultstring'])
+
+    def test_list_alarms_other_project(self):
+        auth_headers = {'X-User-Id': uuidutils.generate_uuid(),
+                        'X-Project-Id': uuidutils.generate_uuid()}
+        data = self.get_json('/alarms', headers=auth_headers)
+
+        self.assertEqual(0, len(data))
+
     def test_get_not_existing_alarm(self):
         resp = self.get_json('/alarms/alarm-id-3',
                              headers=self.auth_headers,
                              expect_errors=True)
         self.assertEqual(404, resp.status_code)
-        self.assertEqual('Alarm alarm-id-3 not found in project %s' %
-                         self.auth_headers["X-Project-Id"],
-                         resp.json['error_message']['faultstring'])
+        self.assertIn('Alarm alarm-id-3 not found',
+                      resp.json['error_message']['faultstring'])
 
     def test_get_alarm(self):
         alarms = self.get_json('/alarms',
@@ -344,13 +378,11 @@ class TestAlarms(TestAlarmsBase):
                                      expect_errors=True,
                                      status=400,
                                      headers=self.auth_headers)
-            faultstring = ('Invalid input for field/attribute op. '
-                           'Value: \'%(op)s\'. unimplemented operator '
-                           'for %(field)s' % {'field': field, 'op': op})
-            self.assertEqual(faultstring,
-                             response.json['error_message']['faultstring'])
 
-        _test('project', 'ne')
+            faultstring = 'Invalid input for field/attribute op'
+            self.assertIn(faultstring,
+                          response.json['error_message']['faultstring'])
+
         _test('project_id', 'ne')
 
     def test_get_alarm_project_filter_normal_user(self):
@@ -364,7 +396,6 @@ class TestAlarms(TestAlarmsBase):
                                        'value': project}])
             self.assertEqual(3, len(alarms))
 
-        _test('project')
         _test('project_id')
 
     def test_get_alarm_other_project_normal_user(self):
@@ -376,15 +407,14 @@ class TestAlarms(TestAlarmsBase):
                                      expect_errors=True,
                                      status=401,
                                      headers=self.auth_headers)
-            faultstring = 'Not Authorized to access project other-project'
-            self.assertEqual(faultstring,
-                             response.json['error_message']['faultstring'])
+            faultstring = 'Not Authorized to access'
+            self.assertIn(faultstring,
+                          response.json['error_message']['faultstring'])
 
-        _test('project')
         _test('project_id')
 
     def test_get_alarm_forbiden(self):
-        pf = os.path.abspath('aodh/tests/functional/api/v2/policy.json-test')
+        pf = os.path.abspath('aodh/tests/functional/api/v2/policy.yaml-test')
         self.CONF.set_override('policy_file', pf, group='oslo_policy')
         self.CONF.set_override('auth_mode', None, group='api')
         self.app = webtest.TestApp(app.load_app(self.CONF))
@@ -436,7 +466,7 @@ class TestAlarms(TestAlarmsBase):
                 }
             },
         }
-        for field, json in six.iteritems(jsons):
+        for field, json in jsons.items():
             resp = self.post_json('/alarms', params=json, expect_errors=True,
                                   status=400, headers=self.auth_headers)
             self.assertEqual("Invalid input for field/attribute %s."
@@ -880,7 +910,7 @@ class TestAlarms(TestAlarmsBase):
                 'granularity': 180,
             }
         }
-        for aspect, id in six.iteritems(identifiers):
+        for aspect, id in identifiers.items():
             json['%s_id' % aspect] = id
         return json
 
@@ -1604,7 +1634,7 @@ class TestAlarmsHistory(TestAlarmsBase):
         return resp
 
     def _assert_is_subset(self, expected, actual):
-        for k, v in six.iteritems(expected):
+        for k, v in expected.items():
             current = actual.get(k)
             if k == 'detail' and isinstance(v, dict):
                 current = jsonlib.loads(current)
@@ -1613,7 +1643,7 @@ class TestAlarmsHistory(TestAlarmsBase):
 
     def _assert_in_json(self, expected, actual):
         actual = jsonlib.dumps(jsonlib.loads(actual), sort_keys=True)
-        for k, v in six.iteritems(expected):
+        for k, v in expected.items():
             fragment = jsonlib.dumps({k: v}, sort_keys=True)[1:-1]
             self.assertIn(fragment, actual,
                           '%s not in %s' % (fragment, actual))
@@ -1838,14 +1868,14 @@ class TestAlarmsHistory(TestAlarmsBase):
         self._get_alarm_history('a', expect_errors=True, status=404)
 
     def test_get_alarm_history_ordered_by_recentness(self):
-        for i in moves.xrange(10):
+        for i in range(10):
             self._update_alarm('a', dict(name='%s' % i))
         history = self._get_alarm_history('a')
         self.assertEqual(10, len(history), 'hist: %s' % history)
         self._assert_is_subset(dict(alarm_id='a',
                                     type='rule change'),
                                history[0])
-        for i in moves.xrange(1, 11):
+        for i in range(1, 11):
             detail = '{"name": "%s"}' % (10 - i)
             self._assert_is_subset(dict(alarm_id='a',
                                         detail=detail,
@@ -1925,13 +1955,13 @@ class TestAlarmsHistory(TestAlarmsBase):
 
 
 class TestAlarmsQuotas(TestAlarmsBase):
-
-    def _test_alarm_quota(self):
-        alarm = {
+    def setUp(self):
+        super(TestAlarmsQuotas, self).setUp()
+        self.alarm = {
             'name': 'alarm',
             'type': 'gnocchi_aggregation_by_metrics_threshold',
-            'user_id': self.auth_headers['X-User-Id'],
-            'project_id': self.auth_headers['X-Project-Id'],
+            'user_id': self.user_id,
+            'project_id': self.project_id,
             RULE_KEY: {
                 'metrics': ['41869681-5776-46d6-91ed-cccc43b6e4e3',
                             'a1fb80f4-c242-4f57-87c6-68f47521059e'],
@@ -1943,17 +1973,29 @@ class TestAlarmsQuotas(TestAlarmsBase):
             }
         }
 
+    def _create_alarm(self, alarm=None):
+        if not alarm:
+            alarm = self.alarm
+
         resp = self.post_json('/alarms', params=alarm,
-                              headers=self.auth_headers)
-        self.assertEqual(201, resp.status_code)
+                              headers=self.auth_headers,
+                              status=201)
+
+        return resp
+
+    def _test_alarm_quota(self):
+        """Failed on the second creation."""
+        resp = self._create_alarm()
+
         alarms = self.get_json('/alarms', headers=self.auth_headers)
         self.assertEqual(1, len(alarms))
 
+        alarm = copy.copy(self.alarm)
         alarm['name'] = 'another_user_alarm'
         resp = self.post_json('/alarms', params=alarm,
                               expect_errors=True,
-                              headers=self.auth_headers)
-        self.assertEqual(403, resp.status_code)
+                              headers=self.auth_headers,
+                              status=403)
         faultstring = 'Alarm quota exceeded for user'
         self.assertIn(faultstring,
                       resp.json['error_message']['faultstring'])
@@ -2031,7 +2073,84 @@ class TestAlarmsQuotas(TestAlarmsBase):
 
         self.auth_headers["X-roles"] = "admin"
         alarms = self.get_json('/alarms', headers=self.auth_headers)
-        self.assertEqual(2, len(alarms))
+        self.assertEqual(1, len(alarms))
+
+    def test_overquota_by_quota_api(self):
+        auth_headers = copy.copy(self.auth_headers)
+        auth_headers['X-Roles'] = 'admin'
+
+        # Update project quota.
+        self.post_json(
+            '/quotas',
+            {
+                "project_id": self.project_id,
+                "quotas": [
+                    {
+                        "resource": "alarms",
+                        "limit": 1
+                    }
+                ]
+            },
+            headers=auth_headers,
+            status=201
+        )
+
+        self._test_alarm_quota()
+
+        # Update project quota back
+        self.post_json(
+            '/quotas',
+            {
+                "project_id": self.project_id,
+                "quotas": [
+                    {
+                        "resource": "alarms",
+                        "limit": -1
+                    }
+                ]
+            },
+            headers=auth_headers,
+            status=201
+        )
+
+    def test_overquota_by_user_quota_config(self):
+        self.CONF.set_override('user_alarm_quota', 1, 'api')
+        auth_headers = copy.copy(self.auth_headers)
+        auth_headers['X-Roles'] = 'admin'
+
+        # Update project quota.
+        self.post_json(
+            '/quotas',
+            {
+                "project_id": self.project_id,
+                "quotas": [
+                    {
+                        "resource": "alarms",
+                        "limit": 2
+                    }
+                ]
+            },
+            headers=auth_headers,
+            status=201
+        )
+
+        self._test_alarm_quota()
+
+        # Update project quota back
+        self.post_json(
+            '/quotas',
+            {
+                "project_id": self.project_id,
+                "quotas": [
+                    {
+                        "resource": "alarms",
+                        "limit": -1
+                    }
+                ]
+            },
+            headers=auth_headers,
+            status=201
+        )
 
 
 class TestAlarmsRuleThreshold(TestAlarmsBase):
@@ -2401,6 +2520,26 @@ class TestAlarmsRuleGnocchi(TestAlarmsBase):
         self._verify_alarm(json, alarms[0])
 
 
+class TestAlarmsRuleLoadBalancer(TestAlarmsBase):
+    def test_post(self):
+        json = {
+            'name': 'added_alarm_defaults',
+            'type': 'loadbalancer_member_health',
+            'loadbalancer_member_health_rule': {
+                "pool_id": "2177ccd8-b09c-417a-89a0-e8d2419be612",
+                "stack_id": "1b974012-ebcb-4888-8ae2-47714d4d2c4d",
+                "autoscaling_group_id": "681c9266-61d2-4c9a-ad18-526807f6adc0"
+            }
+        }
+        self.post_json('/alarms', params=json, status=201,
+                       headers=self.auth_headers)
+
+        alarms = list(self.alarm_conn.get_alarms())
+
+        self.assertEqual(1, len(alarms))
+        self._verify_alarm(json, alarms[0])
+
+
 class TestAlarmsEvent(TestAlarmsBase):
 
     def test_list_alarms(self):
@@ -2566,13 +2705,9 @@ class TestAlarmsCompositeRule(TestAlarmsBase):
                                   expect_errors=True,
                                   headers=self.auth_headers)
 
-        err = ("Unsupported sub-rule type :non-type in composite "
-               "rule, should be one of: "
-               "['gnocchi_aggregation_by_metrics_threshold', "
-               "'gnocchi_aggregation_by_resources_threshold', "
-               "'gnocchi_resources_threshold']")
+        err = "Unsupported sub-rule type"
         faultstring = response.json['error_message']['faultstring']
-        self.assertEqual(err, faultstring)
+        self.assertIn(err, faultstring)
 
     def test_post_with_sub_rule_with_only_required_params(self):
         sub_rulea = {
@@ -2707,7 +2842,7 @@ class TestPaginationQuery(TestAlarmsBase):
         self.assertEqual(['name1', 'name2', 'name3'], names)
 
     def test_pagination_query_history_data(self):
-        for i in moves.xrange(10):
+        for i in range(10):
             self._update_alarm('a', dict(name='%s' % i))
         url = '/alarms/a/history?sort=event_id:desc&sort=timestamp:desc'
         data = self.get_json(url, headers=self.auth_headers)

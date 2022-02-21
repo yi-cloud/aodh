@@ -20,16 +20,15 @@
 
 import copy
 import datetime
-import inspect
 
 from oslo_utils import timeutils
 import pecan
-import six
-from six.moves.urllib import parse as urllib_parse
+from urllib import parse as urllib_parse
 import wsme
 
 from aodh.api.controllers.v2 import base
 from aodh.api import rbac
+from aodh.utils import get_func_valid_keys
 
 
 def get_auth_project(on_behalf_of=None):
@@ -64,7 +63,7 @@ def sanitize_query(query, db_func, on_behalf_of=None):
         _verify_query_segregation(q, auth_project)
 
         proj_q = [i for i in q if i.field == 'project_id']
-        valid_keys = inspect.getargspec(db_func)[0]
+        valid_keys = get_func_valid_keys(db_func)
         if not proj_q and 'on_behalf_of' not in valid_keys:
             # The user is restricted, but they didn't specify a project
             # so add it for them.
@@ -113,7 +112,7 @@ def validate_query(query, db_func, internal_keys=None,
     internal_keys = internal_keys or []
     _verify_query_segregation(query)
 
-    valid_keys = inspect.getargspec(db_func)[0]
+    valid_keys = get_func_valid_keys(db_func)
     if 'alarm_type' in valid_keys:
         valid_keys.remove('alarm_type')
         valid_keys.append('type')
@@ -157,9 +156,9 @@ def validate_query(query, db_func, internal_keys=None,
             if key in valid_keys or _is_field_metadata(i.field):
                 if operator == 'eq':
                     if key == 'enabled':
-                        i._get_value_as_type('boolean')
+                        i.get_value('boolean')
                     elif _is_field_metadata(key):
-                        i._get_value_as_type()
+                        i.get_value()
                 else:
                     raise wsme.exc.InvalidInput('op', i.op,
                                                 'unimplemented operator for '
@@ -235,7 +234,7 @@ def query_to_kwargs(query, db_func, internal_keys=None,
                 if i.field == 'search_offset':
                     stamp['search_offset'] = i.value
                 elif i.field == 'enabled':
-                    kwargs[i.field] = i._get_value_as_type('boolean')
+                    kwargs[i.field] = i.get_value('boolean')
                 else:
                     key = translation.get(i.field, i.field)
                     kwargs[key] = i.value
@@ -294,8 +293,6 @@ def set_resp_location_hdr(location):
     # str in py2 and py3 even this is not the same thing in both
     # version
     # see: http://legacy.python.org/dev/peps/pep-3333/#unicode-issues
-    if six.PY2 and isinstance(location, six.text_type):
-        location = location.encode('utf-8')
     location = urllib_parse.quote(location)
     pecan.response.headers['Location'] = location
 
@@ -320,3 +317,33 @@ def get_pagination_options(sort, limit, marker, api_model):
     return {'limit': limit,
             'marker': marker,
             'sort': sorts}
+
+
+def get_query_value(queries, field, type=None):
+    """Get value of the specified query field.
+
+    :param queries: A list of Query object.
+    :param field: Field name.
+    """
+    for q in queries:
+        if q.field == field:
+            return q.get_value(type)
+
+    raise wsme.exc.InvalidInput(
+        'field',
+        field,
+        "field %s is not provided" % field
+    )
+
+
+def is_field_exist(queries, field):
+    """Check if a given field exists in a query list.
+
+    :param queries: A list of Query object.
+    :param field: Field name.
+    """
+    for q in queries:
+        if q.field == field:
+            return True
+
+    return False

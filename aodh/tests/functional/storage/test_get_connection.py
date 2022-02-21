@@ -15,15 +15,14 @@
 # under the License.
 """Tests for aodh/storage/
 """
-import mock
+from unittest import mock
+
 from oslo_config import fixture as fixture_config
 from oslotest import base
 
 from aodh import service
 from aodh import storage
 from aodh.storage import impl_log
-
-import six
 
 
 class EngineTest(base.BaseTestCase):
@@ -45,7 +44,7 @@ class EngineTest(base.BaseTestCase):
         try:
             storage.get_connection_from_config(self.CONF)
         except RuntimeError as err:
-            self.assertIn('no-such-engine', six.text_type(err))
+            self.assertIn('no-such-engine', str(err))
 
 
 class ConnectionRetryTest(base.BaseTestCase):

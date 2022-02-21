@@ -19,7 +19,7 @@ from oslo_config import cfg
 from oslo_log import log
 from oslo_utils import uuidutils
 import requests
-import six.moves.urllib.parse as urlparse
+import urllib.parse as urlparse
 
 from aodh import notifier
 
@@ -77,7 +77,6 @@ class RestAlarmNotifier(notifier.AlarmNotifier):
                 'current': current, 'reason': reason,
                 'reason_data': reason_data}
         headers['content-type'] = 'application/json'
-        headers['openstack-api-version'] = 'clustering 1.10'
         kwargs = {'data': json.dumps(body),
                   'headers': headers}
 

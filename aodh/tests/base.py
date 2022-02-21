@@ -23,7 +23,6 @@ import unittest
 import oslo_messaging.conffixture
 from oslo_utils import timeutils
 from oslotest import base
-import six
 import webtest
 
 import aodh
@@ -71,6 +70,14 @@ class BaseTestCase(base.BaseTestCase):
         except (TypeError, AttributeError):
             self.fail("%s doesn't have length" % type(obj))
 
+    def assertDictContains(self, parent, child):
+        """Checks whether child dict is a subset of parent.
+
+        assertDictContainsSubset() in standard Python 2.7 has been deprecated
+        since Python 3.2
+        """
+        self.assertEqual(parent, dict(parent, **child))
+
     @staticmethod
     def path_get(project_file=None):
         root = os.path.abspath(os.path.join(os.path.dirname(__file__),
@@ -83,6 +90,29 @@ class BaseTestCase(base.BaseTestCase):
         else:
             return root
 
+    def assert_single_item(self, items, **filters):
+        return self.assert_multiple_items(items, 1, **filters)[0]
+
+    def assert_multiple_items(self, items, count, **filters):
+        def _matches(item, **props):
+            for prop_name, prop_val in props.items():
+                v = (item[prop_name] if isinstance(item, dict)
+                     else getattr(item, prop_name))
+                if v != prop_val:
+                    return False
+            return True
+
+        filtered_items = list(
+            [item for item in items if _matches(item, **filters)]
+        )
+        found = len(filtered_items)
+
+        if found != count:
+            self.fail("Wrong number of items found [filters=%s, "
+                      "expected=%s, found=%s]" % (filters, count, found))
+
+        return filtered_items
+
 
 def _skip_decorator(func):
     @functools.wraps(func)
@@ -90,10 +120,10 @@ def _skip_decorator(func):
         try:
             return func(*args, **kwargs)
         except aodh.NotImplementedError as e:
-            raise unittest.SkipTest(six.text_type(e))
+            raise unittest.SkipTest(str(e))
         except webtest.app.AppError as e:
-            if 'not implemented' in six.text_type(e):
-                raise unittest.SkipTest(six.text_type(e))
+            if 'not implemented' in str(e):
+                raise unittest.SkipTest(str(e))
             raise
     return skip_if_not_implemented
 

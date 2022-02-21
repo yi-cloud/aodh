@@ -54,13 +54,6 @@ def enforce(policy_name, headers, enforcer, target):
         'project_id': headers.get('X-Project-Id'),
     }
 
-    # TODO(sileht): add deprecation warning to be able to remove this:
-    # maintain backward compat with Juno and previous by allowing the action if
-    # there is no rule defined for it
-    rules = enforcer.rules.keys()
-    if rule_method not in rules:
-        return
-
     if not enforcer.enforce(rule_method, target, credentials):
         pecan.core.abort(status_code=403,
                          detail='RBAC Authorization Failed')
@@ -105,3 +98,7 @@ def get_limited_to_project(headers, enforcer):
 
     """
     return get_limited_to(headers, enforcer)[1]
+
+
+def is_admin(headers):
+    return 'admin' in headers.get('X-Roles', "").split(",")

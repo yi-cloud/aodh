@@ -16,9 +16,8 @@
 import copy
 import datetime
 import json
-import six
+from unittest import mock
 
-import mock
 from oslo_utils import timeutils
 from oslo_utils import uuidutils
 
@@ -66,7 +65,7 @@ class TestEventAlarmEvaluate(base.TestEvaluatorBase):
         self._update_history = []
 
         def get_alarms(**kwargs):
-            return (a for a in six.itervalues(self._stored_alarms))
+            return (a for a in self._stored_alarms.values())
 
         def update_alarm(alarm):
             self._stored_alarms[alarm.alarm_id] = copy.deepcopy(alarm)
@@ -100,13 +99,13 @@ class TestEventAlarmEvaluate(base.TestEvaluatorBase):
 
         if expect_db_queries is not None:
             expected = [mock.call(enabled=True,
-                                  alarm_type='event',
-                                  project=p) for p in expect_db_queries]
+                                  type='event',
+                                  project_id=p) for p in expect_db_queries]
             self.assertEqual(expected,
                              self.storage_conn.get_alarms.call_args_list)
 
         if expect_alarm_states is not None:
-            for alarm_id, state in six.iteritems(expect_alarm_states):
+            for alarm_id, state in expect_alarm_states.items():
                 self.assertEqual(state, self._stored_alarms[alarm_id].state)
 
         if expect_alarm_updates is not None:

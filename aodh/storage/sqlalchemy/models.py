@@ -16,8 +16,9 @@ SQLAlchemy models for aodh data.
 import json
 
 from oslo_utils import timeutils
-import six
-from sqlalchemy import Column, String, Index, Boolean, Text, DateTime
+from oslo_utils import uuidutils
+import sqlalchemy as sa
+from sqlalchemy import Column, String, Index, Boolean, Text, DateTime, Integer
 from sqlalchemy.dialects import mysql
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.types import TypeDecorator
@@ -66,7 +67,7 @@ class AodhBase(object):
 
     def update(self, values):
         """Make the model object behave like a dict."""
-        for k, v in six.iteritems(values):
+        for k, v in values.items():
             setattr(self, k, v)
 
 
@@ -106,6 +107,8 @@ class Alarm(Base):
     rule = Column(JSONEncodedDict)
     time_constraints = Column(JSONEncodedDict)
 
+    evaluate_timestamp = Column(DateTime, default=lambda: timeutils.utcnow())
+
 
 class AlarmChange(Base):
     """Define AlarmChange data."""
@@ -122,3 +125,17 @@ class AlarmChange(Base):
     detail = Column(Text)
     timestamp = Column(TimestampUTC, default=lambda: timeutils.utcnow())
     severity = Column(String(50))
+
+
+class Quota(Base):
+    __tablename__ = 'quota'
+    __table_args__ = (
+        sa.UniqueConstraint('project_id', 'resource'),
+        Index('ix_%s_project_id_resource' % __tablename__,
+              'project_id', 'resource'),
+    )
+
+    id = Column(String(36), primary_key=True, default=uuidutils.generate_uuid)
+    project_id = Column(String(128))
+    resource = Column(String(50))
+    limit = Column(Integer)

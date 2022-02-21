@@ -16,8 +16,8 @@
 """
 
 import datetime
+from unittest import mock
 
-import mock
 from oslo_utils import timeutils
 
 from aodh import storage
@@ -166,13 +166,12 @@ class AlarmTest(AlarmTestBase):
 
     def test_list_by_type(self):
         self.add_some_alarms()
-        alarms = list(self.alarm_conn.get_alarms(alarm_type=ALARM_TYPE))
+        alarms = list(self.alarm_conn.get_alarms(type=ALARM_TYPE))
         self.assertEqual(3, len(alarms))
 
     def test_list_excluded_by_name(self):
         self.add_some_alarms()
-        exclude = {'name': 'yellow-alert'}
-        alarms = list(self.alarm_conn.get_alarms(exclude=exclude))
+        alarms = list(self.alarm_conn.get_alarms(name={'ne': 'yellow-alert'}))
         self.assertEqual(2, len(alarms))
         alarm_names = sorted([a.name for a in alarms])
         self.assertEqual(['orange-alert', 'red-alert'], alarm_names)
@@ -278,7 +277,7 @@ class AlarmHistoryTest(AlarmTestBase):
 
     def _clear_alarm_history(self, utcnow, ttl, count):
         self.mock_utcnow.return_value = utcnow
-        self.alarm_conn.clear_expired_alarm_history_data(ttl)
+        self.alarm_conn.clear_expired_alarm_history_data(ttl, 100)
         history = list(self.alarm_conn.query_alarm_history())
         self.assertEqual(count, len(history))
 
@@ -318,7 +317,7 @@ class AlarmHistoryTest(AlarmTestBase):
             "on_behalf_of": alarm.project_id,
             "severity": severity,
             "timestamp": datetime.datetime(2014, 4, 7, 7, 34)
-            }
+        }
         self.alarm_conn.record_alarm_change(alarm_change=alarm_change)
         filter_expr = {"=": {"severity": "low"}}
         history = list(self.alarm_conn.query_alarm_history(

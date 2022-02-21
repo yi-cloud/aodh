@@ -13,10 +13,18 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from oslo_config import cfg
+from oslo_policy import opts
 from oslo_policy import policy
 from pecan import hooks
 
 from aodh.api import policies
+
+# TODO(gmann): Remove setting the default value of config policy_file
+# once oslo_policy change the default value to 'policy.yaml'.
+# https://github.com/openstack/oslo.policy/blob/a626ad12fe5a3abd49d70e3e5b95589d279ab578/oslo_policy/opts.py#L49
+DEFAULT_POLICY_FILE = 'policy.yaml'
+opts.set_defaults(cfg.CONF, DEFAULT_POLICY_FILE)
 
 
 class ConfigHook(hooks.PecanHook):
@@ -28,6 +36,13 @@ class ConfigHook(hooks.PecanHook):
     def __init__(self, conf):
         self.conf = conf
         self.enforcer = policy.Enforcer(conf, default_rule="default")
+        # NOTE(gmann): Explictly disable the warnings for policies
+        # changing their default check_str. With new RBAC policy
+        # work, all the policy defaults have been changed and warning for
+        # each policy started filling the logs limit for various tool.
+        # Once we move to new defaults only world then we can enable these
+        # warning again.
+        self.enforcer.suppress_default_change_warnings = True
         self.enforcer.register_defaults(policies.list_rules())
 
     def before(self, state):

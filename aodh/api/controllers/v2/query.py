@@ -18,6 +18,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import copy
 import json
 
 import jsonschema
@@ -32,6 +33,7 @@ from aodh.api.controllers.v2 import alarms
 from aodh.api.controllers.v2 import base
 from aodh.api import rbac
 from aodh.i18n import _
+from aodh import profiler
 from aodh.storage import models
 
 LOG = log.getLogger(__name__)
@@ -75,6 +77,7 @@ def _list_to_regexp(items, regexp_prefix=""):
     return regexp
 
 
+@profiler.trace_cls('api')
 class ValidatedComplexQuery(object):
     complex_operators = ["and", "or"]
     order_directions = ["asc", "desc"]
@@ -98,7 +101,7 @@ class ValidatedComplexQuery(object):
         valid_fields = _list_to_regexp(valid_keys)
 
         if metadata_allowed:
-            valid_filter_fields = valid_fields + "|^metadata\.[\S]+$"
+            valid_filter_fields = valid_fields + r"|^metadata\.[\S]+$"
         else:
             valid_filter_fields = valid_fields
 
@@ -315,7 +318,8 @@ class ValidatedComplexQuery(object):
     @staticmethod
     def lowercase_keys(mapping):
         """Converts the values of the keys in mapping to lowercase."""
-        items = mapping.items()
+        loop_mapping = copy.deepcopy(mapping)
+        items = loop_mapping.items()
         for key, value in items:
             del mapping[key]
             mapping[key.lower()] = value

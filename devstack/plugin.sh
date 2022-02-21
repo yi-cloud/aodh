@@ -4,7 +4,7 @@
 # looks like
 #
 # [[local|localrc]]
-# enable_plugin aodh https://git.openstack.org/openstack/aodh
+# enable_plugin aodh https://opendev.org/openstack/aodh
 #
 # By default all aodh services are started (see
 # devstack/settings).
@@ -69,7 +69,6 @@ function _aodh_config_apache_wsgi {
     sudo mkdir -p $AODH_WSGI_DIR
 
     local aodh_apache_conf=$(apache_site_config_for aodh)
-    local apache_version=$(get_apache_version)
     local venv_path=""
 
     # Copy proxy vhost and wsgi file
@@ -245,7 +244,8 @@ function install_aodh {
     else
         PY_VERS=${PYTHON2_VERSION}
     fi
-    sudo -H python${PY_VERS} -m pip install -e "$AODH_DIR"[test,$AODH_BACKEND]
+    sudo -H SETUPTOOLS_USE_DISTUTILS=stdlib python${PY_VERS} -m pip \
+	    install -e "$AODH_DIR"[test,$AODH_BACKEND]
     sudo install -d -o $STACK_USER -m 755 $AODH_CONF_DIR
 
     if [ "$AODH_DEPLOY" == "mod_wsgi" ]; then
@@ -271,8 +271,6 @@ function start_aodh {
     if [[ "$AODH_DEPLOY" == "mod_wsgi" ]]; then
         enable_apache_site aodh
         restart_apache_server
-        tail_log aodh /var/log/$APACHE_NAME/aodh.log
-        tail_log aodh-api /var/log/$APACHE_NAME/aodh_access.log
     elif [ "$AODH_DEPLOY" == "uwsgi" ]; then
         run_process aodh-api "$AODH_BIN_DIR/uwsgi $AODH_UWSGI_FILE"
     else
@@ -290,6 +288,15 @@ function start_aodh {
     run_process aodh-notifier "$AODH_BIN_DIR/aodh-notifier --config-file $AODH_CONF"
     run_process aodh-evaluator "$AODH_BIN_DIR/aodh-evaluator --config-file $AODH_CONF"
     run_process aodh-listener "$AODH_BIN_DIR/aodh-listener --config-file $AODH_CONF"
+}
+
+# configure_tempest_for_aodh()
+# NOTE (gmann): Configure all the Tempest setting for Aodh service in
+# this function.
+function configure_tempest_for_aodh {
+    if is_service_enabled tempest; then
+        iniset $TEMPEST_CONFIG service_available aodh True
+    fi
 }
 
 # stop_aodh() - Stop running processes
@@ -323,6 +330,9 @@ if is_service_enabled aodh; then
         init_aodh
         # Start the services
         start_aodh
+    elif [[ "$1" == "stack" && "$2" == "test-config" ]]; then
+        echo_summary "Configuring Tempest for Aodh"
+        configure_tempest_for_aodh
     fi
 
     if [[ "$1" == "unstack" ]]; then

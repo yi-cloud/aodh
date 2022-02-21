@@ -13,7 +13,8 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-import mock
+from unittest import mock
+
 from oslo_config import fixture
 from oslotest import base
 
@@ -49,3 +50,7 @@ class TestEvaluatorBase(base.BaseTestCase):
     def _assert_all_alarms(self, state):
         for alarm in self.alarms:
             self.assertEqual(state, alarm.state)
+
+    def assertDictContains(self, parent, child):
+        """Checks whether child dict is a subset of parent."""
+        self.assertEqual(parent, dict(parent, **child))

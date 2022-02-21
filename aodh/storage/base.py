@@ -15,11 +15,9 @@
 """Base classes for storage engines
 """
 import copy
-import inspect
-
-import six
 
 import aodh
+from aodh.utils import get_func_valid_keys
 
 
 def update_nested(original_dict, updates):
@@ -28,7 +26,7 @@ def update_nested(original_dict, updates):
      Updates occur without replacing entire sub-dicts.
     """
     dict_to_update = copy.deepcopy(original_dict)
-    for key, value in six.iteritems(updates):
+    for key, value in updates.items():
         if isinstance(value, dict):
             sub_dict = update_nested(dict_to_update.get(key, {}), value)
             dict_to_update[key] = sub_dict
@@ -38,11 +36,11 @@ def update_nested(original_dict, updates):
 
 
 class Model(object):
-    """Base class for storage API models."""
+    """base class for storage api models."""
 
     def __init__(self, **kwds):
         self.fields = list(kwds)
-        for k, v in six.iteritems(kwds):
+        for k, v in kwds.items():
             setattr(self, k, v)
 
     def as_dict(self):
@@ -64,7 +62,7 @@ class Model(object):
 
     @classmethod
     def get_field_names(cls):
-        fields = inspect.getargspec(cls.__init__)[0]
+        fields = get_func_valid_keys(cls.__init__)
         return set(fields) - set(["self"])
 
 
@@ -91,24 +89,8 @@ class Connection(object):
         """Migrate the database to `version` or the most recent version."""
 
     @staticmethod
-    def get_alarms(name=None, user=None, state=None, meter=None,
-                   project=None, enabled=None, alarm_id=None,
-                   alarm_type=None, severity=None, exclude=None,
-                   pagination=None):
-        """Yields a lists of alarms that match filters.
-
-        :param name: Optional name for alarm.
-        :param user: Optional ID for user that owns the resource.
-        :param state: Optional string for alarm state.
-        :param meter: Optional string for alarms associated with meter.
-        :param project: Optional ID for project that owns the resource.
-        :param enabled: Optional boolean to list disable alarm.
-        :param alarm_id: Optional alarm_id to return one alarm.
-        :param alarm_type: Optional alarm type.
-        :param severity: Optional alarm severity.
-        :param exclude: Optional dict for inequality constraint.
-        :param pagination: Pagination parameters.
-        """
+    def get_alarms(*args, **kwargs):
+        """Yields a lists of alarms that match filters."""
         raise aodh.NotImplementedError('Alarms not implemented')
 
     @staticmethod
@@ -209,13 +191,30 @@ class Connection(object):
         return cls.STORAGE_CAPABILITIES
 
     @staticmethod
-    def clear_expired_alarm_history_data(alarm_history_ttl):
+    def clear_expired_alarm_history_data(ttl, max_count=None):
         """Clear expired alarm history data from the backend storage system.
 
         Clearing occurs according to the time-to-live.
 
-        :param alarm_history_ttl: Number of seconds to keep alarm history
-                                  records for.
+        :param ttl: Number of seconds to keep alarm history records for.
+        :param max_count: Number of records to delete.
         """
         raise aodh.NotImplementedError('Clearing alarm history '
                                        'not implemented')
+
+    @staticmethod
+    def get_quotas(project_id):
+        """Get resource quota for the given project."""
+        raise aodh.NotImplementedError('Getting resource quota not '
+                                       'implemented')
+
+    @staticmethod
+    def set_quotas(project_id, quotas):
+        """Set resource quota for the given user."""
+        raise aodh.NotImplementedError('Setting resource quota not '
+                                       'implemented')
+
+    @staticmethod
+    def delete_quotas(project_id):
+        raise aodh.NotImplementedError('Deleting resource quota not '
+                                       'implemented')

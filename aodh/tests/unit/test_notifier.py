@@ -15,14 +15,14 @@
 import fixtures
 import json
 import time
+from unittest import mock
 
-import mock
 from oslo_config import cfg
 from oslo_config import fixture as fixture_config
 
 import oslo_messaging
 import requests
-import six.moves.urllib.parse as urlparse
+from urllib import parse as urlparse
 
 from aodh import keystone_client
 from aodh import notifier

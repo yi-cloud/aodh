@@ -18,8 +18,8 @@ import struct
 
 from oslo_config import cfg
 from oslo_log import log
+from oslo_utils import encodeutils
 from oslo_utils import uuidutils
-import six
 import tenacity
 import tooz.coordination
 
@@ -38,6 +38,8 @@ OPTS = [
                       'coordination.'),
     cfg.FloatOpt('check_watchers',
                  default=10.0,
+                 deprecated_for_removal=True,
+                 deprecated_reason='This parameter is no longer used.',
                  help='Number of seconds between checks to see if group '
                       'membership has changed'),
     cfg.IntOpt('retry_backoff',
@@ -72,7 +74,7 @@ class HashRing(object):
         self._sorted_keys = []
 
         for node in nodes:
-            for r in six.moves.range(replicas):
+            for r in range(replicas):
                 hashed_key = self._hash('%s-%s' % (node, r))
                 self._ring[hashed_key] = node
                 self._sorted_keys.append(hashed_key)
@@ -114,7 +116,8 @@ class PartitionCoordinator(object):
         self.backend_url = self.conf.coordination.backend_url
         self._coordinator = None
         self._groups = set()
-        self._my_id = my_id or uuidutils.generate_uuid()
+        self._my_id = my_id or \
+            encodeutils.safe_encode(uuidutils.generate_uuid())
 
     def start(self):
         if self.backend_url:
@@ -218,10 +221,12 @@ class PartitionCoordinator(object):
         `tooz`. We then hash all the objects into buckets and return only
         the ones that hashed into *our* bucket.
         """
-        if not group_id:
+        if not group_id or not self.is_active():
             return universal_set
+
         if group_id not in self._groups:
             self.join_group(group_id)
+
         try:
             members = self._get_members(group_id)
             LOG.debug('Members of group: %s, Me: %s', members, self._my_id)
