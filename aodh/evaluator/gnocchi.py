@@ -13,6 +13,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 import json
+import uuid
 
 from gnocchiclient import client
 from gnocchiclient import exceptions
@@ -59,12 +60,18 @@ class GnocchiBase(threshold.ThresholdEvaluator):
 
 class GnocchiResourceThresholdEvaluator(GnocchiBase):
     def _statistics(self, rule, start, end):
+        resource_id = rule['resource_id']
+        try:
+            uuid.UUID(rule['metric'])
+        except ValueError:
+            resource_id = None
+
         try:
             return self._gnocchi_client.metric.get_measures(
                 metric=rule['metric'],
                 granularity=rule['granularity'],
                 start=start, stop=end,
-                resource_id=rule['resource_id'],
+                resource_id=resource_id,
                 aggregation=rule['aggregation_method'])
         except exceptions.MetricNotFound:
             raise threshold.InsufficientDataError(
